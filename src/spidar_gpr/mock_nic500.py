@@ -268,7 +268,7 @@ class MockNIC500:
         Convenience: return a NIC500Connection already pointed at this mock.
         Extra kwargs are forwarded to the constructor.
         """
-        from SpidarGPR import NIC500Connection
+        from spidar_gpr.SpidarGPR import NIC500Connection
 
         return NIC500Connection(
             ip=self.bind_ip,

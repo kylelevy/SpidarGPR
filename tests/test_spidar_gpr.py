@@ -22,8 +22,8 @@ import time
 import numpy as np
 import pytest
 
-from mock_nic500 import MockNIC500
-from SpidarGPR import (
+from spidar_gpr.mock_nic500 import MockNIC500
+from spidar_gpr.SpidarGPR import (
     DataSocketError,
     GPRTrace,
     NIC500Connection,
@@ -458,7 +458,7 @@ class TestStreaming:
         assert result == []
 
     def test_slow_mock_still_yields_traces(self, slow_mock):
-        """Even with trace_delay_s=0.02, 0.5 s should yield ≥ 5 traces."""
+        """Even with trace_delay_s=0.02, 0.5 s should yield >= 5 traces."""
         nic = _conn(slow_mock)
         with nic.session():
             nic.start_streaming()
@@ -511,7 +511,7 @@ class TestFaultInjection:
     def test_hardware_drop_mid_read(self, drop_mock):
         """
         When the hardware closes the TCP socket after N traces,
-        read_traces() must return whatever was received (≤ drop_after)
+        read_traces() must return whatever was received (<= drop_after)
         rather than hanging indefinitely or crashing.
         """
         nic = _conn(drop_mock)
@@ -602,7 +602,7 @@ class TestMockSelfConsistency:
         Traces with the same trace_num must have identical sample data
         (the mock uses a seeded RNG).
         """
-        from mock_nic500 import (
+        from spidar_gpr.mock_nic500 import (
             _make_trace_bytes,
             HEADER_SIZE_BYTES,
             DEFAULT_STACKS,
@@ -618,7 +618,7 @@ class TestMockSelfConsistency:
 
     def test_mock_different_trace_nums_differ(self):
         """Traces with different trace_nums must have different samples."""
-        from mock_nic500 import (
+        from spidar_gpr.mock_nic500 import (
             _make_trace_bytes,
             HEADER_SIZE_BYTES,
             DEFAULT_STACKS,

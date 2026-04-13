@@ -15,8 +15,33 @@ It directly operated on top of the interfaces provided by the developer SDK.
 * 🧵 Thread-safe continuous streaming interface
 * 📦 Structured trace representation using Python dataclasses
 * 🔄 Context-managed sessions for safe hardware interaction
+* 📦 Installable as a local Python package (pip install .)
 
 ---
+
+⚙️ Installation
+
+This project is not published on PyPI. Install it locally from the repository.
+
+1. Clone the Repository
+```bash
+git clone https://github.com/kylelevy/SpidarGPR.git
+cd SpidarGPR
+```
+2. Install as a Package
+```bash
+pip install .
+```
+
+For development (editable install):
+
+```bash
+pip install -e .[dev]
+```
+
+---
+
+## Setup
 
 ## ⚙️ Requirements
 
@@ -95,7 +120,7 @@ All of this is handled automatically via a **context manager**.
 ### 📥 Fixed Trace Acquisition
 
 ```python
-from SpidarGPR import NIC500Connection
+from spidar_gpr import NIC500Connection
 
 nic = NIC500Connection()
 
@@ -108,6 +133,11 @@ with nic.session():
 ### 🔄 Continuous Streaming
 
 ```python
+from spidar_gpr import NIC500Connection
+import time
+
+nic = NIC500Connection()
+
 with nic.session():
     nic.start_streaming()
 
@@ -139,11 +169,6 @@ with nic.session():
 ## 🧵 Thread Safety
 
 * Uses `threading.Lock` for buffer access
-* Safe concurrent reads via:
-
-  ```python
-  get_latest_traces(clear=True)
-  ```
 
 ---
 
@@ -204,7 +229,7 @@ Custom exceptions:
 
 ## 🔧 Configuration Parameters
 
-Defined as class constants:
+Defined as inputs to the class with default values:
 
 | Parameter                   | Value   | Description             |
 | --------------------------- | ------- | ----------------------- |
@@ -222,19 +247,6 @@ Defined as class constants:
   ```
   192.168.20.221
   ```
-* Modify `IP_ADDRESS` if needed:
-
-  ```python
-  NIC500Connection.IP_ADDRESS = "your_device_ip"
-  ```
-
----
-
-## 🛠 Future Improvements
-
-* ROS2 native node integration
-* Async I/O instead of threading
-* Data compression for high-rate streaming
 
 ---
 
@@ -260,3 +272,75 @@ Defined as class constants:
 ## 📚 References
 
 * Spidar NIC-500 SDK Documentation
+
+---
+
+Here’s a clean section you can add to your README to document the test suite and how to run it:
+
+---
+
+## 🧪 Test Suite
+
+This project includes a **pytest-based test suite** located in the `tests/` directory.
+
+### 📦 Install Test Dependencies
+
+If you installed the package normally, make sure `pytest` is available:
+
+```bash
+pip install pytest
+```
+
+---
+
+### ▶️ Running Tests
+
+From the root of the repository:
+
+```bash
+pytest
+```
+
+This will automatically discover and run all tests inside the `tests/` folder.
+
+---
+
+### 🔍 Running Specific Tests
+
+Run a single test file:
+
+```bash
+pytest tests/test_connection.py
+```
+
+Run a specific test function:
+
+```bash
+pytest tests/test_connection.py::test_read_traces
+```
+
+---
+
+### 🧪 Notes
+
+* The mock simulates:
+
+  * Full HTTP API surface used by `NIC500Connection`
+  * TCP data socket streaming real binary trace packets
+  * Acquisition state transitions and configuration handling
+
+* Key testing capabilities provided by the mock:
+
+  * ✅ Run tests entirely offline (no hardware required)
+  * ✅ Validate full session lifecycle (`session()`, acquisition, teardown)
+  * ✅ Simulate edge cases:
+
+    * SDK mode disabled (triggers `NICModeError`)
+    * Dropped socket connections (`drop_after`)
+    * Variable trace rates (`trace_delay_s`)
+
+  * ✅ Inspect internal behavior:
+
+    * Last setup payload (`last_setup_payload`)
+    * Acquisition start/stop transitions (`acquisition_transitions`)
+    * Total traces streamed

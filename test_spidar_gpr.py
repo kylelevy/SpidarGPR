@@ -369,7 +369,6 @@ class TestStreaming:
             traces = nic.get_latest_traces()
             nic.stop_streaming()
 
-        assert traces is not None
         assert len(traces) > 0
 
     def test_streaming_returns_gpr_trace_objects(self, mock):
@@ -423,32 +422,15 @@ class TestStreaming:
         with nic.session():
             nic.start_streaming()
             time.sleep(0.3)
-            nic.get_latest_traces(clear=True)
+            nic.stop_streaming()
+            first = nic.get_latest_traces()
             # Give the reader a moment then drain again
             time.sleep(0.05)
-            second = nic.get_latest_traces(clear=True)
+            second = nic.get_latest_traces()
             nic.stop_streaming()
 
-        # It's acceptable for second to be None or a short list; the key
-        # property is that the first call cleared the buffer.
-        # We just verify no exception and types are correct.
-        if second is not None:
-            for t in second:
-                assert isinstance(t, GPRTrace)
-
-    def test_get_latest_traces_no_clear(self, mock):
-        """get_latest_traces(clear=False) must leave the buffer intact."""
-        nic = _conn(mock)
-        with nic.session():
-            nic.start_streaming()
-            time.sleep(0.3)
-            nic.stop_streaming()
-            first = nic.get_latest_traces(clear=False)
-            second = nic.get_latest_traces(clear=False)
-
-        assert first is not None
-        assert second is not None
-        assert len(first) == len(second)
+        assert len(first) > 0
+        assert second == []
 
     def test_start_streaming_idempotent(self, mock):
         """Calling start_streaming() twice must not spawn extra threads."""
@@ -473,7 +455,7 @@ class TestStreaming:
         """get_latest_traces() on an empty buffer must return None."""
         nic = _conn(mock)
         result = nic.get_latest_traces()
-        assert result is None
+        assert result == []
 
     def test_slow_mock_still_yields_traces(self, slow_mock):
         """Even with trace_delay_s=0.02, 0.5 s should yield ≥ 5 traces."""
@@ -498,7 +480,7 @@ class TestStreaming:
         def drainer(nic: NIC500Connection):
             end = time.time() + 0.4
             while time.time() < end:
-                batch = nic.get_latest_traces(clear=True)
+                batch = nic.get_latest_traces()
                 if batch:
                     try:
                         for t in batch:

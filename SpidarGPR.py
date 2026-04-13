@@ -10,10 +10,10 @@ from dataclasses import dataclass
 from contextlib import contextmanager
 
 
-
 # =========================
 # Custom Exceptions
 # =========================
+
 
 class NICModeError(Exception):
     pass
@@ -59,6 +59,7 @@ class GPRTrace:
 # Connection Manager Class
 # =========================
 
+
 class NIC500Connection:
     """
     Context-managed connection manager for a NIC-500 running in SDK mode.
@@ -68,26 +69,9 @@ class NIC500Connection:
     # Constants
     # =========================
 
-    IP_ADDRESS = '192.168.20.221'
-
-    API_URL = f"http://{IP_ADDRESS}:8080/api"
-    NIC_SYSTEM_INFO_CMD = API_URL + "/nic/system_information"
-    GPR_SYSTEM_INFO_CMD = API_URL + "/nic/gpr/system_information"
-    DATA_SOCKET_CMD = API_URL + "/nic/gpr/data_socket"
-    VERSION_CMD = API_URL + "/nic/version"
-    POWER_CMD = API_URL + "/nic/power"
-    SETUP_CMD = API_URL + "/nic/setup"
-    ACQUISITION_CMD = API_URL + "/nic/acquisition"
-
-    POINTS_PER_TRACE = 200
-    TIME_SAMPLING_INTERVAL_PS = 100
-    POINT_STACKS = 4
-    PERIOD_S = 0.00125 # 800 Hz
-    FIRST_BREAK_POINT = 20
-
-    POWER_ON_CONFIGURATION = {"data": json.dumps({'state': 2})}
-    START_ACQUISITION_CONFIGURATION = {"data": json.dumps({'state': 1})}
-    STOP_ACQUISITION_CONFIGURATION = {"data": json.dumps({'state': 0})}
+    POWER_ON_CONFIGURATION = {"data": json.dumps({"state": 2})}
+    START_ACQUISITION_CONFIGURATION = {"data": json.dumps({"state": 1})}
+    STOP_ACQUISITION_CONFIGURATION = {"data": json.dumps({"state": 0})}
 
     HEADER_SIZE_BYTES = 20
     POINT_SIZE_BYTES = 4
@@ -96,7 +80,72 @@ class NIC500Connection:
     # Initialization
     # =========================
 
-    def __init__(self):
+    def __init__(
+        self,
+        ip: str = "192.168.20.221",
+        points_per_trace: int = 200,
+        time_sampling_interval_ps: int = 100,
+        point_stacks: int = 4,
+        period_s: int = 0,
+        first_break_point: int = 20,
+    ):
+        """
+        Initialize a connection configuration for a NIC-500 device operating in SDK mode.
+
+        This constructor sets up API endpoints, acquisition parameters, and internal
+        buffers used for reading and streaming GPR trace data. It does not establish
+        a network connection until used within the provided context managers.
+
+        Args:
+            ip (str, optional):
+                IP address of the NIC-500 device. Defaults to "192.168.20.221".
+
+            points_per_trace (int, optional):
+                Number of sampled data points per GPR trace. Determines the size
+                of each trace payload. Defaults to 200.
+
+            time_sampling_interval_ps (int, optional):
+                Time interval between consecutive samples in picoseconds (ps).
+                Controls temporal resolution of the trace. Defaults to 100.
+
+            point_stacks (int, optional):
+                Number of stacks (averages) per point to improve signal quality.
+                Higher values reduce noise but increase acquisition time.
+                Defaults to 4.
+
+            period_s (int, optional):
+                Acquisition period in seconds. Defines the interval between
+                consecutive traces (1 / period_s Hz). A value of 0 typically
+                means continuous acquisition. Defaults to 0.
+
+            first_break_point (int, optional):
+                Index of the first break point used to adjust the time window
+                shift. This affects alignment of trace data in time.
+                Defaults to 20.
+
+        Attributes:
+            API_URL (str): Base URL for NIC-500 REST API.
+            data_socket (socket.socket | None): Active TCP socket for trace streaming.
+            gpr_system_info (dict | None): Cached GPR system information.
+            window_time_shift_ps (int): Computed time shift applied to traces.
+        """
+        self.ip = ip
+
+        self.API_URL = f"http://{self.ip}:8080/api"
+        self.NIC_SYSTEM_INFO_CMD = self.API_URL + "/nic/system_information"
+        self.GPR_SYSTEM_INFO_CMD = self.API_URL + "/nic/gpr/system_information"
+        self.DATA_SOCKET_CMD = self.API_URL + "/nic/gpr/data_socket"
+        self.VERSION_CMD = self.API_URL + "/nic/version"
+        self.POWER_CMD = self.API_URL + "/nic/power"
+        self.SETUP_CMD = self.API_URL + "/nic/setup"
+        self.ACQUISITION_CMD = self.API_URL + "/nic/acquisition"
+
+        self.POINTS_PER_TRACE = points_per_trace
+        self.TIME_SAMPLING_INTERVAL_PS = time_sampling_interval_ps
+        self.POINT_STACKS = point_stacks
+        self.PERIOD_S = period_s  # 1/period_s Hz
+        self.FIRST_BREAK_POINT = first_break_point
+
         self.data_socket = None
         self.gpr_system_info = None
         self.window_time_shift_ps = -55000
@@ -125,13 +174,20 @@ class NIC500Connection:
         try:
             response = requests.get(command)
             json_response = json.loads(response.content)
-            print("Response from {} command: {}\n".format(command_str_name, json_response["status"]["message"]))
+            print(
+                "Response from {} command: {}\n".format(
+                    command_str_name, json_response["status"]["message"]
+                )
+            )
         except ValueError as err:
             print("Unable to decode JSON: {}\n".format(err))
         except KeyError:
-            print("Response from {} command: {}\n".format(command_str_name, json_response["success"]))
+            print(
+                "Response from {} command: {}\n".format(
+                    command_str_name, json_response["success"]
+                )
+            )
         return json_response
-
 
     def _put_requests(self, command, data, command_str_name):
         """
@@ -149,10 +205,14 @@ class NIC500Connection:
         try:
             response = requests.put(command, data=data)
             json_response = json.loads(response.content)
-            print("Response from {} command: {}\n".format(command_str_name, json_response["status"]["message"]))
+            print(
+                "Response from {} command: {}\n".format(
+                    command_str_name, json_response["status"]["message"]
+                )
+            )
         except ValueError as err:
             print("Unable to decode JSON: {}\n".format(err))
-        
+
         if json_response["status"]["status_code"] != 0:
             print("Command failed: {}".format(json_response["status"]["message"]))
             json_response = None
@@ -165,13 +225,15 @@ class NIC500Connection:
 
     def check_sdk_mode(self):
         api_response = self._get_requests(self.API_URL, "API")
-        if api_response['data']['name'] != "NIC-500 SDK":
+        if api_response["data"]["name"] != "NIC-500 SDK":
             raise NICModeError("NIC is not in SDK mode")
         print("NIC is in SDK mode")
 
     def get_system_information(self):
-        response = self._get_requests(self.NIC_SYSTEM_INFO_CMD, "NIC System Information")
-        info = response['data']
+        response = self._get_requests(
+            self.NIC_SYSTEM_INFO_CMD, "NIC System Information"
+        )
+        info = response["data"]
         print(
             f"System Information:\n"
             f"  App DIP: {info['app_dip']}\n"
@@ -187,10 +249,12 @@ class NIC500Connection:
         self._put_requests(self.POWER_CMD, self.POWER_ON_CONFIGURATION, "Power")
 
     def get_GPR_information(self):
-        response = self._get_requests(self.GPR_SYSTEM_INFO_CMD, "GPR System Information")
-        self.gpr_system_info = response['data']['gpr']
+        response = self._get_requests(
+            self.GPR_SYSTEM_INFO_CMD, "GPR System Information"
+        )
+        self.gpr_system_info = response["data"]["gpr"]
 
-        ref = self.gpr_system_info.get('window_time_shift_reference_ps')
+        ref = self.gpr_system_info.get("window_time_shift_reference_ps")
         if ref is not None:
             self.window_time_shift_ps = int(ref) - (
                 self.FIRST_BREAK_POINT * self.TIME_SAMPLING_INTERVAL_PS
@@ -200,21 +264,19 @@ class NIC500Connection:
 
     def setup_gpr(self):
         config = {
-            'data': json.dumps({
-                "gpr0": {
-                    "parameters": {
-                        "points_per_trace": self.POINTS_PER_TRACE,
-                        "window_time_shift_ps": self.window_time_shift_ps,
-                        "point_stacks": self.POINT_STACKS,
-                        "time_sampling_interval_ps": self.TIME_SAMPLING_INTERVAL_PS
-                    }
-                },
-                "timer": {
-                    "parameters": {
-                        "period_s": self.PERIOD_S
-                    }
+            "data": json.dumps(
+                {
+                    "gpr0": {
+                        "parameters": {
+                            "points_per_trace": self.POINTS_PER_TRACE,
+                            "window_time_shift_ps": self.window_time_shift_ps,
+                            "point_stacks": self.POINT_STACKS,
+                            "time_sampling_interval_ps": self.TIME_SAMPLING_INTERVAL_PS,
+                        }
+                    },
+                    "timer": {"parameters": {"period_s": self.PERIOD_S}},
                 }
-            })
+            )
         }
         self._put_requests(self.SETUP_CMD, config, "Setup")
 
@@ -228,11 +290,11 @@ class NIC500Connection:
         Context manager for the GPR data socket.
         """
         response = self._get_requests(self.DATA_SOCKET_CMD, "Data Socket")
-        port = response['data']['data_socket']['port']
+        port = response["data"]["data_socket"]["port"]
 
         try:
             self.data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.data_socket.connect((self.IP_ADDRESS, port))
+            self.data_socket.connect((self.ip, port))
             yield self.data_socket
         except Exception as exc:
             raise DataSocketError(f"Failed to use data socket: {exc}")
@@ -250,14 +312,14 @@ class NIC500Connection:
             self._put_requests(
                 self.ACQUISITION_CMD,
                 self.START_ACQUISITION_CONFIGURATION,
-                "Start Acquisition"
+                "Start Acquisition",
             )
             yield
         finally:
             self._put_requests(
                 self.ACQUISITION_CMD,
                 self.STOP_ACQUISITION_CONFIGURATION,
-                "Stop Acquisition"
+                "Stop Acquisition",
             )
 
     @contextmanager
@@ -288,18 +350,18 @@ class NIC500Connection:
             self.POINTS_PER_TRACE * self.POINT_SIZE_BYTES
         )
 
-        buffer = b''
+        buffer = bytearray()
 
         while len(traces) < max_traces:
             buffer += self.data_socket.recv(trace_size)
 
             while len(buffer) >= trace_size:
-                header = buffer[:self.HEADER_SIZE_BYTES]
-                samples = buffer[self.HEADER_SIZE_BYTES:trace_size]
-                buffer = buffer[trace_size:]
+                header = buffer[: self.HEADER_SIZE_BYTES]
+                samples = buffer[self.HEADER_SIZE_BYTES : trace_size]
+                del buffer[:trace_size]
 
                 tv_sec, tv_nsec, trace_num, status, stacks, header_size = struct.unpack(
-                    '<LLLLHH', header
+                    "<LLLLHH", header
                 )
 
                 points = np.frombuffer(samples, dtype=np.float32)
@@ -310,20 +372,22 @@ class NIC500Connection:
                 )
                 print("First 10 points (mV):", points[:10], "\n")
 
-                traces.append({
-                    "header": {
-                        "tv_sec": tv_sec,
-                        "tv_nsec": tv_nsec,
-                        "trace_num": trace_num,
-                        "status": status,
-                        "stacks": stacks,
-                        "header_size": header_size
-                    },
-                    "data": points
-                })
+                traces.append(
+                    {
+                        "header": {
+                            "tv_sec": tv_sec,
+                            "tv_nsec": tv_nsec,
+                            "trace_num": trace_num,
+                            "status": status,
+                            "stacks": stacks,
+                            "header_size": header_size,
+                        },
+                        "data": points,
+                    }
+                )
 
         return traces
-    
+
     # =========================
     # Data Streaming
     # =========================
@@ -337,11 +401,9 @@ class NIC500Connection:
 
         self._streaming = True
         self._reader_thread = threading.Thread(
-            target=self._trace_reader_loop,
-            daemon=True
+            target=self._trace_reader_loop, daemon=True
         )
         self._reader_thread.start()
-
 
     def stop_streaming(self):
         self._streaming = False
@@ -349,7 +411,6 @@ class NIC500Connection:
             self._reader_thread.join(timeout=1.0)
             self._reader_thread = None
 
-    
     def get_latest_traces(self, clear: bool = True):
         """
         Retrieve buffered traces in a thread-safe way.
@@ -365,19 +426,20 @@ class NIC500Connection:
 
         with self._buffer_lock:
             # print("DEBUG: len_traces = "+str(len(self._trace_buffer)))
-            traces = [self._trace_buffer.popleft() for _ in range(len(self._trace_buffer))]
+            traces = [
+                self._trace_buffer.popleft() for _ in range(len(self._trace_buffer))
+            ]
             if clear:
                 self._trace_buffer.clear()
 
         return traces
 
-    
     def _trace_reader_loop(self):
         trace_size = self.HEADER_SIZE_BYTES + (
             self.POINTS_PER_TRACE * self.POINT_SIZE_BYTES
         )
 
-        buffer = b''
+        buffer = bytearray()
 
         while self._streaming:
             try:
@@ -389,12 +451,12 @@ class NIC500Connection:
                 buffer += chunk
 
                 while len(buffer) >= trace_size:
-                    header = buffer[:self.HEADER_SIZE_BYTES]
-                    samples = buffer[self.HEADER_SIZE_BYTES:trace_size]
-                    buffer = buffer[trace_size:]
+                    header = buffer[: self.HEADER_SIZE_BYTES]
+                    samples = buffer[self.HEADER_SIZE_BYTES : trace_size]
+                    del buffer[:trace_size]
 
-                    tv_sec, tv_nsec, trace_num, status, stacks, header_size = struct.unpack(
-                        '<LLLLHH', header
+                    tv_sec, tv_nsec, trace_num, status, stacks, header_size = (
+                        struct.unpack("<LLLLHH", header)
                     )
 
                     points = np.frombuffer(samples, dtype=np.float32)
@@ -406,7 +468,7 @@ class NIC500Connection:
                         status=status,
                         stacks=stacks,
                         header_size=header_size,
-                        data=points
+                        data=points,
                     )
 
                     # thread-safe append
@@ -425,7 +487,6 @@ if __name__ == "__main__":
     with nic.session():
         traces = nic.read_traces(10)
 
-
     def plot_radargram_from_traces(traces):
         """
         Plot a GPR radargram from read_traces() output.
@@ -438,27 +499,21 @@ if __name__ == "__main__":
             return
 
         import matplotlib.pyplot as plt
+
         # Stack trace data into 2D array: (num_traces, points_per_trace)
         radargram = np.vstack([t["data"] for t in traces])
 
         time_axis_ns = (
-            np.arange(radargram.shape[1])
-            * nic.TIME_SAMPLING_INTERVAL_PS
-            * 1e-3
+            np.arange(radargram.shape[1]) * nic.TIME_SAMPLING_INTERVAL_PS * 1e-3
         )
         trace_axis = np.arange(radargram.shape[0])
 
         plt.figure(figsize=(10, 6))
         plt.imshow(
             radargram.T,
-            aspect='auto',
-            cmap='seismic',
-            extent=[
-                trace_axis[0],
-                trace_axis[-1],
-                time_axis_ns[-1],
-                time_axis_ns[0]
-            ]
+            aspect="auto",
+            cmap="seismic",
+            extent=[trace_axis[0], trace_axis[-1], time_axis_ns[-1], time_axis_ns[0]],
         )
 
         plt.colorbar(label="Amplitude (mV)")

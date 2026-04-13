@@ -83,6 +83,7 @@ class NIC500Connection:
     def __init__(
         self,
         ip: str = "192.168.20.221",
+        http_port: int = 8080,
         points_per_trace: int = 200,
         time_sampling_interval_ps: int = 100,
         point_stacks: int = 4,
@@ -99,6 +100,9 @@ class NIC500Connection:
         Args:
             ip (str, optional):
                 IP address of the NIC-500 device. Defaults to "192.168.20.221".
+
+            http_port (int, optional)
+                The port of the NIC-500 device api interface. Defaults to 8080.
 
             points_per_trace (int, optional):
                 Number of sampled data points per GPR trace. Determines the size
@@ -131,7 +135,7 @@ class NIC500Connection:
         """
         self.ip = ip
 
-        self.API_URL = f"http://{self.ip}:8080/api"
+        self.API_URL = f"http://{self.ip}:{http_port}/api"
         self.NIC_SYSTEM_INFO_CMD = self.API_URL + "/nic/system_information"
         self.GPR_SYSTEM_INFO_CMD = self.API_URL + "/nic/gpr/system_information"
         self.DATA_SOCKET_CMD = self.API_URL + "/nic/gpr/data_socket"
@@ -295,9 +299,11 @@ class NIC500Connection:
         try:
             self.data_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.data_socket.connect((self.ip, port))
+        except OSError as exc:
+            raise DataSocketError(f"Failed to open data socket: {exc}") from exc
+
+        try:
             yield self.data_socket
-        except Exception as exc:
-            raise DataSocketError(f"Failed to use data socket: {exc}")
         finally:
             if self.data_socket:
                 self.data_socket.close()
@@ -353,9 +359,12 @@ class NIC500Connection:
         buffer = bytearray()
 
         while len(traces) < max_traces:
-            buffer += self.data_socket.recv(trace_size)
+            chunk = self.data_socket.recv(trace_size)
+            if not chunk:
+                break
+            buffer += chunk
 
-            while len(buffer) >= trace_size:
+            while len(buffer) >= trace_size and len(traces) < max_traces:
                 header = buffer[: self.HEADER_SIZE_BYTES]
                 samples = buffer[self.HEADER_SIZE_BYTES : trace_size]
                 del buffer[:trace_size]
@@ -364,7 +373,7 @@ class NIC500Connection:
                     "<LLLLHH", header
                 )
 
-                points = np.frombuffer(samples, dtype=np.float32)
+                points = np.frombuffer(samples, dtype=np.float32).copy()
 
                 print(
                     f"Trace {trace_num}: "
@@ -411,26 +420,21 @@ class NIC500Connection:
             self._reader_thread.join(timeout=1.0)
             self._reader_thread = None
 
-    def get_latest_traces(self, clear: bool = True):
+    def get_latest_traces(self):
         """
         Retrieve buffered traces in a thread-safe way.
 
-        Args:
-            clear (bool): Clear buffer after read
-
         Returns:
-            list[GPRTrace] | None
+            list[GPRTrace]
         """
         if len(self._trace_buffer) == 0:
-            return
+            return []
 
         with self._buffer_lock:
             # print("DEBUG: len_traces = "+str(len(self._trace_buffer)))
             traces = [
                 self._trace_buffer.popleft() for _ in range(len(self._trace_buffer))
             ]
-            if clear:
-                self._trace_buffer.clear()
 
         return traces
 
@@ -459,7 +463,7 @@ class NIC500Connection:
                         struct.unpack("<LLLLHH", header)
                     )
 
-                    points = np.frombuffer(samples, dtype=np.float32)
+                    points = np.frombuffer(samples, dtype=np.float32).copy()
 
                     trace = GPRTrace(
                         tv_sec=tv_sec,
